@@ -1,0 +1,884 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Afterlight — Event Agent</title>
+<style>
+/* ============ Design tokens ============
+   Warm paper background, ink text, one deep-forest accent.
+   Premium = restraint: neutral surfaces, hairline borders,
+   soft shadows, a single accent color used sparingly.        */
+:root{
+  --bg:#F6F6F3; --surface:#FFFFFF; --surface2:#FBFBF9;
+  --ink:#17181C; --soft:#62666F; --faint:#9BA0A8;
+  --line:#E6E4DD; --line2:#EFEDE7;
+  --accent:#1E4D3B; --accent-soft:#E3EEE7; --accent-ink:#17402F;
+  --amber:#A86E14; --amber-soft:#F6ECD7;
+  --bad:#B3402F; --bad-soft:#F9E7E2;
+  --ok:#2E7D52;
+  --radius:16px; --radius-s:11px;
+  --shadow-sm:0 1px 2px rgba(23,24,28,.05),0 1px 6px rgba(23,24,28,.04);
+  --shadow-md:0 2px 6px rgba(23,24,28,.06),0 14px 34px -14px rgba(23,24,28,.16);
+  --shadow-lg:0 4px 10px rgba(23,24,28,.07),0 28px 60px -20px rgba(23,24,28,.24);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Inter,Roboto,"Helvetica Neue",Arial,sans-serif;
+  font-size:14.5px;line-height:1.6;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+::selection{background:var(--accent);color:#fff}
+button{font:inherit;cursor:pointer}
+input,textarea,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+
+/* ============ Header ============ */
+header.top{position:sticky;top:0;z-index:50;display:flex;align-items:center;justify-content:space-between;
+  padding:0 26px;height:62px;background:rgba(255,255,255,.86);backdrop-filter:blur(14px);
+  border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:12px}
+.logo{width:32px;height:32px;border-radius:9px;background:var(--ink);color:#fff;display:grid;place-items:center;
+  font-size:15px;font-weight:700;letter-spacing:-.02em}
+.brand .name{font-size:16.5px;font-weight:650;letter-spacing:-.015em}
+.brand .name span{color:var(--soft);font-weight:500}
+.badge{font-size:10.5px;font-weight:650;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-ink);
+  background:var(--accent-soft);border-radius:20px;padding:3px 9px}
+.local-note{font-size:12.5px;color:var(--soft);display:flex;align-items:center;gap:7px}
+.local-note .dot{width:7px;height:7px;border-radius:50%;background:var(--ok)}
+
+/* ============ Layout ============ */
+.shell{display:grid;grid-template-columns:264px minmax(0,1fr);gap:0;max-width:1340px;margin:0 auto;align-items:start}
+aside.steps{position:sticky;top:62px;padding:28px 18px 28px 26px}
+aside.steps h3{font-size:11px;font-weight:650;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);margin-bottom:14px}
+.stepnav{display:flex;flex-direction:column;gap:4px}
+.stepbtn{display:flex;gap:12px;align-items:flex-start;text-align:left;width:100%;background:none;border:0;
+  padding:11px 12px;border-radius:12px;transition:background .18s}
+.stepbtn:hover{background:#fff}
+.stepbtn .num{flex:none;width:26px;height:26px;border-radius:50%;border:1.5px solid var(--line);
+  background:var(--surface);display:grid;place-items:center;font-size:12.5px;font-weight:650;color:var(--soft);
+  transition:all .2s;font-variant-numeric:tabular-nums}
+.stepbtn .t{font-weight:600;font-size:14px;line-height:1.35;letter-spacing:-.01em}
+.stepbtn .s{font-size:12px;color:var(--soft);line-height:1.45;margin-top:1px}
+.stepbtn.active{background:var(--surface);box-shadow:var(--shadow-sm)}
+.stepbtn.active .num{background:var(--ink);border-color:var(--ink);color:#fff}
+.stepbtn.done .num{background:var(--accent);border-color:var(--accent);color:#fff}
+.overall{margin-top:22px;padding:14px;border:1px solid var(--line2);border-radius:var(--radius-s);background:var(--surface2)}
+.overall .lab{display:flex;justify-content:space-between;font-size:12px;color:var(--soft);margin-bottom:8px}
+.overall .lab b{color:var(--ink);font-variant-numeric:tabular-nums}
+.bar{height:6px;border-radius:4px;background:#EAE8E1;overflow:hidden}
+.bar>i{display:block;height:100%;background:var(--accent);border-radius:4px;transition:width .5s cubic-bezier(.22,.8,.3,1)}
+
+main{padding:28px 30px 70px 12px;min-width:0}
+.panel{display:none}
+.panel.show{display:block;animation:rise .38s cubic-bezier(.22,.8,.3,1)}
+@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.p-head{margin-bottom:20px}
+.p-head .kicker{font-size:11.5px;font-weight:650;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);margin-bottom:6px}
+.p-head h1{font-size:27px;font-weight:680;letter-spacing:-.025em;line-height:1.2}
+.p-head p{color:var(--soft);margin-top:7px;max-width:640px;font-size:14.5px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+  padding:22px 24px;box-shadow:var(--shadow-sm);margin-bottom:16px}
+.card h2{font-size:15px;font-weight:650;letter-spacing:-.01em;margin-bottom:4px}
+.card .hint{font-size:13px;color:var(--soft);margin-bottom:14px}
+label.flabel{display:block;font-size:12.5px;font-weight:600;color:var(--ink);margin:0 0 7px}
+textarea,input[type=text],input[type=url],select{width:100%;background:var(--surface2);
+  border:1px solid var(--line);border-radius:var(--radius-s);padding:11px 13px;font-size:14px;
+  transition:border-color .18s,box-shadow .18s}
+textarea{resize:vertical;min-height:170px;line-height:1.65}
+textarea:focus,input:focus,select:focus{outline:none;border-color:var(--accent);background:#fff;
+  box-shadow:0 0 0 3px rgba(30,77,59,.13)}
+textarea::placeholder,input::placeholder{color:var(--faint)}
+
+/* dropzones */
+.drop{border:1.5px dashed #CFCDC4;border-radius:var(--radius);background:var(--surface2);
+  padding:30px 22px;text-align:center;transition:all .2s;cursor:pointer}
+.drop:hover{border-color:var(--accent);background:#fff}
+.drop.over{border-color:var(--accent);background:var(--accent-soft);transform:scale(1.005)}
+.drop .ic{font-size:26px;display:block;margin-bottom:8px}
+.drop .dt{font-weight:620;font-size:14.5px}
+.drop .ds{font-size:12.5px;color:var(--soft);margin-top:2px}
+.drop input{display:none}
+.poster-preview{display:none;margin-top:16px}
+.poster-preview img{max-width:300px;max-height:380px;border-radius:12px;box-shadow:var(--shadow-md);border:1px solid var(--line)}
+.filemeta{font-size:12.5px;color:var(--soft);margin-top:8px}
+
+/* step footer nav */
+.pager{display:flex;justify-content:space-between;align-items:center;margin-top:24px}
+.btn{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:11px;
+  padding:10px 20px;font-weight:600;font-size:14px;transition:all .18s;box-shadow:var(--shadow-sm)}
+.btn:hover{transform:translateY(-1px);box-shadow:var(--shadow-md)}
+.btn:active{transform:translateY(0)}
+.btn.primary{background:var(--ink);border-color:var(--ink);color:#fff}
+.btn.primary:hover{background:#000}
+.btn:disabled{opacity:.35;cursor:default;transform:none;box-shadow:none}
+.btn.small{padding:7px 14px;font-size:13px;border-radius:9px}
+.pager .where{font-size:12.5px;color:var(--faint);font-variant-numeric:tabular-nums}
+
+/* ============ Step 2: quality check ============ */
+.qgrid{display:grid;grid-template-columns:minmax(0,1fr) 348px;gap:16px;align-items:start}
+.qgroup{margin-bottom:20px}
+.qgroup:last-child{margin-bottom:0}
+.qgroup .q{font-size:14px;font-weight:620;margin-bottom:3px}
+.qgroup .qd{font-size:12.5px;color:var(--soft);margin-bottom:10px}
+.opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+.opt{position:relative}
+.opt input{position:absolute;opacity:0;inset:0;cursor:pointer}
+.opt .obox{display:block;border:1px solid var(--line);border-radius:var(--radius-s);padding:11px 13px;
+  background:var(--surface2);transition:all .18s;height:100%}
+.opt .ot{font-weight:600;font-size:13.5px;display:block;line-height:1.4}
+.opt .od{font-size:12px;color:var(--soft);display:block;margin-top:1px;line-height:1.45}
+.opt:hover .obox{border-color:#C9C6BB;background:#fff}
+.opt input:checked + .obox{border-color:var(--accent);background:var(--accent-soft);
+  box-shadow:0 0 0 1px var(--accent)}
+.opt input:focus-visible + .obox{outline:2px solid var(--accent);outline-offset:2px}
+.assess{position:sticky;top:86px}
+.assess .verdict{font-size:15.5px;font-weight:640;letter-spacing:-.01em;line-height:1.45}
+.assess .vsub{font-size:13px;color:var(--soft);margin-top:5px;line-height:1.55}
+.scorewrap{display:flex;align-items:baseline;gap:8px;margin:14px 0 4px}
+.scorewrap .sc{font-size:34px;font-weight:700;letter-spacing:-.03em;font-variant-numeric:tabular-nums;line-height:1}
+.scorewrap .of{color:var(--faint);font-size:13px}
+.cap{margin-top:13px}
+.cap .crow{display:flex;justify-content:space-between;align-items:baseline;font-size:13px}
+.cap .crow b{font-weight:600}
+.cap .crow .lvl{font-size:12px;font-weight:650}
+.cap .crow .lvl.strong{color:var(--ok)} .cap .crow .lvl.mod{color:var(--amber)} .cap .crow .lvl.lim{color:var(--bad)}
+.cap .bar{margin:5px 0 4px}
+.cap .note{font-size:12px;color:var(--soft);line-height:1.5}
+.assess .scope{margin-top:16px;padding-top:14px;border-top:1px solid var(--line2);font-size:12.5px;color:var(--soft);line-height:1.55}
+
+/* ============ Step 3: upload ============ */
+.upgrid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.thumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:10px;margin-top:16px}
+.thumb{position:relative;border-radius:11px;overflow:hidden;border:1px solid var(--line);background:#ECEAE3;aspect-ratio:1}
+.thumb img,.thumb video{width:100%;height:100%;object-fit:cover;display:block}
+.thumb .rm{position:absolute;top:5px;right:5px;width:22px;height:22px;border-radius:50%;border:0;
+  background:rgba(20,20,24,.72);color:#fff;font-size:13px;line-height:1;display:grid;place-items:center;
+  opacity:0;transition:opacity .18s}
+.thumb:hover .rm{opacity:1}
+.thumb .fn{position:absolute;left:0;right:0;bottom:0;font-size:10px;color:#fff;padding:8px 6px 4px;
+  background:linear-gradient(transparent,rgba(0,0,0,.55));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.empty{border:1px dashed var(--line);border-radius:var(--radius-s);padding:22px;text-align:center;
+  color:var(--faint);font-size:13px;margin-top:16px}
+.upstats{display:flex;gap:18px;font-size:13px;color:var(--soft);margin-top:14px}
+.upstats b{color:var(--ink);font-variant-numeric:tabular-nums}
+
+/* ============ Step 4: people ============ */
+.people{display:grid;grid-template-columns:repeat(auto-fill,minmax(228px,1fr));gap:12px}
+.person{border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);padding:16px;
+  cursor:pointer;transition:all .18s;box-shadow:var(--shadow-sm)}
+.person:hover{transform:translateY(-2px);box-shadow:var(--shadow-md)}
+.person.sel{border-color:var(--accent);box-shadow:0 0 0 1.5px var(--accent),var(--shadow-md)}
+.person .prow{display:flex;gap:11px;align-items:center}
+.avatar{flex:none;width:44px;height:44px;border-radius:50%;display:grid;place-items:center;color:#fff;
+  font-weight:700;font-size:15px;letter-spacing:.01em}
+.person .pname{font-weight:650;font-size:14.5px;border:0;background:none;width:100%;padding:1px 2px;border-radius:5px}
+.person .pname:focus{background:var(--surface2);box-shadow:none;outline:1.5px solid var(--accent)}
+.person .pcount{font-size:12px;color:var(--soft);font-variant-numeric:tabular-nums}
+.person select{margin-top:11px;padding:7px 9px;font-size:13px;border-radius:9px}
+.person .target{margin-top:11px;font-size:12.5px;color:var(--accent-ink);background:var(--accent-soft);
+  border-radius:9px;padding:8px 10px;line-height:1.5}
+.chips{display:flex;flex-wrap:wrap;gap:7px;margin:18px 0 12px}
+.chip{border:1px solid var(--line);background:var(--surface);border-radius:20px;padding:6px 13px;
+  font-size:12.5px;font-weight:550;color:var(--soft);transition:all .16s}
+.chip:hover{border-color:var(--accent);color:var(--ink)}
+.chip.on{background:var(--ink);border-color:var(--ink);color:#fff}
+.wall{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.tile{position:relative;border-radius:12px;overflow:hidden;aspect-ratio:4/3;border:1px solid var(--line)}
+.tile .ph{position:absolute;inset:0}
+.tile img{width:100%;height:100%;object-fit:cover;display:block}
+.tile .tag{position:absolute;left:7px;bottom:7px;font-size:10.5px;font-weight:650;letter-spacing:.03em;
+  background:rgba(18,19,23,.68);color:#fff;border-radius:6px;padding:3px 7px;backdrop-filter:blur(4px)}
+.tile .who{position:absolute;top:7px;left:7px;font-size:10.5px;font-weight:600;
+  background:rgba(255,255,255,.88);color:var(--ink);border-radius:6px;padding:3px 7px}
+.tile.real{outline:2px solid var(--accent);outline-offset:-2px}
+
+/* ============ Step 5: checklist ============ */
+.cl-progress{display:flex;align-items:center;gap:14px}
+.cl-progress .bar{flex:1}
+.cl-progress b{font-variant-numeric:tabular-nums;font-size:14px}
+.clgroup{margin-bottom:6px}
+.clitem{display:flex;gap:11px;align-items:flex-start;padding:9px 10px;border-radius:10px;transition:background .15s}
+.clitem:hover{background:var(--surface2)}
+.clitem input[type=checkbox]{width:18px;height:18px;margin-top:2px;accent-color:var(--accent);flex:none;cursor:pointer}
+.clitem .cl-t{font-size:14px;line-height:1.5}
+.clitem .cl-t small{display:block;color:var(--soft);font-size:12.5px}
+.clitem.done .cl-t{color:var(--soft)}
+.clitem.done .cl-t span{text-decoration:line-through;text-decoration-color:#C6C3B8}
+.clfill{margin:4px 0 10px 39px}
+.clfill input{max-width:520px}
+.summarybox{width:100%;min-height:190px;background:#14161A;color:#EDEEF0;border:0;border-radius:var(--radius-s);
+  padding:16px 18px;font-size:13.5px;line-height:1.7}
+.summarybox:focus{box-shadow:0 0 0 3px rgba(30,77,59,.3);background:#14161A}
+.rowflex{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.copied{font-size:12.5px;color:var(--ok);font-weight:600;opacity:0;transition:opacity .25s}
+.copied.show{opacity:1}
+.foot{margin-top:34px;font-size:12px;color:var(--faint);text-align:center}
+
+@media (max-width:1020px){
+  .shell{grid-template-columns:1fr}
+  aside.steps{position:static;padding:18px 22px 0}
+  .stepnav{flex-direction:row;overflow-x:auto;padding-bottom:6px}
+  .stepbtn{min-width:190px}
+  main{padding:18px 22px 60px}
+  .qgrid{grid-template-columns:1fr}
+  .assess{position:static}
+  .upgrid{grid-template-columns:1fr}
+}
+@media (prefers-reduced-motion:reduce){
+  *{animation-duration:.01ms!important;transition-duration:.01ms!important}
+}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="brand">
+    <div class="logo">A</div>
+    <div class="name">Afterlight <span>· Event Agent</span></div>
+    <span class="badge">Prototype</span>
+  </div>
+  <div class="local-note"><span class="dot"></span> Runs entirely in your browser — nothing is uploaded anywhere.</div>
+</header>
+
+<div class="shell">
+  <!-- ============ Step navigation ============ -->
+  <aside class="steps">
+    <h3>Workflow</h3>
+    <nav class="stepnav" id="stepNav"></nav>
+    <div class="overall">
+      <div class="lab"><span>Setup progress</span><b id="overallPct">0%</b></div>
+      <div class="bar"><i id="overallBar" style="width:0%"></i></div>
+    </div>
+  </aside>
+
+  <main>
+    <!-- ============ STEP 1 · Event brief ============ -->
+    <section class="panel" data-panel="0">
+      <div class="p-head">
+        <div class="kicker">Step 1 of 5</div>
+        <h1>Start with the event brief</h1>
+        <p>Paste the event page — agenda, speakers, themes. The agent reads the brief to know who matters, what happens when, and what the photos need to say.</p>
+      </div>
+      <div class="card">
+        <label class="flabel" for="briefText">Event description</label>
+        <textarea id="briefText" placeholder="Paste the full event page here — title, agenda, speaker list, session topics, dress code, anything the client published…"></textarea>
+        <div style="height:14px"></div>
+        <label class="flabel" for="briefUrl">Event page URL <span style="color:var(--faint);font-weight:500">(optional)</span></label>
+        <input type="url" id="briefUrl" placeholder="https://…">
+        <div class="filemeta" id="briefMeta">Nothing added yet. Even a rough paste helps — the agent mainly needs names, session titles, and timing.</div>
+      </div>
+      <div class="card">
+        <h2>Event poster</h2>
+        <p class="hint">The poster sets the visual reference — brand colors, logo placement, and the look the selects should match.</p>
+        <div class="drop" id="posterDrop" tabindex="0" role="button" aria-label="Upload event poster">
+          <span class="ic">🖼️</span>
+          <div class="dt">Drop the poster here, or click to choose</div>
+          <div class="ds">PNG or JPG. Stays on this device.</div>
+          <input type="file" id="posterInput" accept="image/*">
+        </div>
+        <div class="poster-preview" id="posterPreview">
+          <img id="posterImg" alt="Event poster preview">
+          <div class="filemeta" id="posterMeta"></div>
+        </div>
+      </div>
+      <div class="pager">
+        <span class="where">Step 1 / 5</span>
+        <button class="btn primary" data-next>Continue →</button>
+      </div>
+    </section>
+
+    <!-- ============ STEP 2 · Quality check ============ -->
+    <section class="panel" data-panel="1">
+      <div class="p-head">
+        <div class="kicker">Step 2 of 5</div>
+        <h1>Before you upload: what are we working with?</h1>
+        <p>Five honest questions about the source files. The agent adjusts what it promises — before anyone waits on a result it can't deliver.</p>
+      </div>
+      <div class="qgrid">
+        <div class="card" id="qualityForm"></div>
+        <div class="card assess" aria-live="polite">
+          <h2>What the agent can do</h2>
+          <p class="hint">Updates as you answer. No answer = no promises.</p>
+          <div class="scorewrap"><span class="sc" id="scoreNum">—</span><span class="of">/ 100 recoverability</span></div>
+          <div class="bar"><i id="scoreBar" style="width:0%"></i></div>
+          <div style="height:12px"></div>
+          <div class="verdict" id="verdict">Answer the questions to see a realistic assessment.</div>
+          <div class="vsub" id="verdictSub">The agent would rather tell you now that a face in a dark, compressed photo can only be helped so far.</div>
+          <div id="capList"></div>
+          <div class="scope" id="scopeNote"></div>
+        </div>
+      </div>
+      <div class="pager">
+        <button class="btn" data-prev>← Back</button>
+        <span class="where">Step 2 / 5</span>
+        <button class="btn primary" data-next>Continue →</button>
+      </div>
+    </section>
+
+    <!-- ============ STEP 3 · Upload ============ -->
+    <section class="panel" data-panel="2">
+      <div class="p-head">
+        <div class="kicker">Step 3 of 5</div>
+        <h1>Upload the media</h1>
+        <p>Originals if you have them. Previews below are generated locally from your files — the agent's working set for the next step.</p>
+      </div>
+      <div class="upgrid">
+        <div class="card">
+          <h2>Photos</h2>
+          <p class="hint">JPG, PNG, HEIC, RAW previews where the browser supports them.</p>
+          <div class="drop" id="photoDrop" tabindex="0" role="button" aria-label="Upload photos">
+            <span class="ic">📷</span>
+            <div class="dt">Drop photos, or click to choose</div>
+            <div class="ds">Multiple files welcome.</div>
+            <input type="file" id="photoInput" accept="image/*" multiple>
+          </div>
+          <div class="empty" id="photoEmpty">No photos yet — the wall in the next step will run on demo photos.</div>
+          <div class="thumbs" id="photoThumbs"></div>
+          <div class="upstats" id="photoStats"></div>
+          <div class="rowflex" style="margin-top:12px"><button class="btn small" id="photoClear" style="display:none">Remove all photos</button></div>
+        </div>
+        <div class="card">
+          <h2>Videos</h2>
+          <p class="hint">Stage recordings, walk-ins, b-roll. The agent pulls stills and short clips from these.</p>
+          <div class="drop" id="videoDrop" tabindex="0" role="button" aria-label="Upload videos">
+            <span class="ic">🎞️</span>
+            <div class="dt">Drop videos, or click to choose</div>
+            <div class="ds">MP4 / MOV and other browser-supported formats.</div>
+            <input type="file" id="videoInput" accept="video/*" multiple>
+          </div>
+          <div class="empty" id="videoEmpty">No videos yet.</div>
+          <div class="thumbs" id="videoThumbs"></div>
+          <div class="upstats" id="videoStats"></div>
+          <div class="rowflex" style="margin-top:12px"><button class="btn small" id="videoClear" style="display:none">Remove all videos</button></div>
+        </div>
+      </div>
+      <div class="pager">
+        <button class="btn" data-prev>← Back</button>
+        <span class="where">Step 3 / 5</span>
+        <button class="btn primary" data-next>Continue →</button>
+      </div>
+    </section>
+
+    <!-- ============ STEP 4 · People ============ -->
+    <section class="panel" data-panel="3">
+      <div class="p-head">
+        <div class="kicker">Step 4 of 5</div>
+        <h1>People, classified</h1>
+        <p>The agent groups photos by person, matched against the brief. Fix a name or a role in place — delivery targets adjust to who each person is. Select a person to filter the wall.</p>
+      </div>
+      <div class="people" id="peopleGrid"></div>
+      <div class="chips" id="wallChips"></div>
+      <div class="wall" id="wall"></div>
+      <div class="empty" id="wallEmpty" style="display:none">No photos under this filter yet.</div>
+      <div class="pager">
+        <button class="btn" data-prev>← Back</button>
+        <span class="where">Step 4 / 5</span>
+        <button class="btn primary" data-next>Continue →</button>
+      </div>
+    </section>
+
+    <!-- ============ STEP 5 · Checklist ============ -->
+    <section class="panel" data-panel="4">
+      <div class="p-head">
+        <div class="kicker">Step 5 of 5</div>
+        <h1>The photographer's checklist</h1>
+        <p>What to confirm with the client <em>before</em> the event — not in a panic during it. Tick and fill as you get answers; the summary at the end is written to send.</p>
+      </div>
+      <div class="card">
+        <div class="cl-progress">
+          <span style="font-size:13px;color:var(--soft)">Checklist completion</span>
+          <div class="bar"><i id="clBar" style="width:0%"></i></div>
+          <b id="clPct">0%</b>
+        </div>
+      </div>
+      <div id="checklistWrap"></div>
+      <div class="card">
+        <h2>Summary for the client</h2>
+        <p class="hint">Generated from what you've ticked and filled above. Review it, copy it, send it — and get a "yes" before the day.</p>
+        <textarea class="summarybox" id="summaryBox" readonly></textarea>
+        <div class="rowflex" style="margin-top:14px">
+          <button class="btn primary" id="copySummary">Copy summary</button>
+          <span class="copied" id="copiedNote">Copied ✓</span>
+        </div>
+      </div>
+      <div class="pager">
+        <button class="btn" data-prev>← Back</button>
+        <span class="where">Step 5 / 5</span>
+        <span></span>
+      </div>
+      <div class="foot">Afterlight Event Agent — interactive prototype. Demo people and demo photos are illustrative; your uploads never leave this device.</div>
+    </section>
+  </main>
+</div>
+
+<script>
+"use strict";
+/* ================= State ================= */
+const state = {
+  step: 0,
+  visited: [true,false,false,false,false],
+  poster: null,               // {name,size,url}
+  quality: { device:null, raw:null, lighting:null, delivery:null, count:null },
+  photos: [],                 // {name,size,url}
+  videos: [],                 // {name,size,url}
+  wallFilter: "all",          // 'all' | 'uploads' | personId
+};
+const $  = s => document.querySelector(s);
+const $$ = s => Array.from(document.querySelectorAll(s));
+const fmtSize = b => b>=1073741824 ? (b/1073741824).toFixed(2)+" GB"
+                   : b>=1048576    ? (b/1048576).toFixed(1)+" MB"
+                   : b>=1024       ? Math.round(b/1024)+" KB" : b+" B";
+const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
+
+/* ================= Step navigation ================= */
+const STEPS = [
+  { t:"Event brief",            s:"Agenda, guests, poster" },
+  { t:"Quality check",          s:"What the source files allow" },
+  { t:"Upload media",           s:"Photos & video, locally" },
+  { t:"People classification",  s:"Grouped, tagged, deliverable" },
+  { t:"Photographer checklist", s:"Confirm with the client first" },
+];
+const navEl = $("#stepNav");
+STEPS.forEach((st,i)=>{
+  const b = document.createElement("button");
+  b.className = "stepbtn"; b.type = "button";
+  b.innerHTML = `<span class="num">${i+1}</span><span><span class="t">${st.t}</span><span class="s" style="display:block">${st.s}</span></span>`;
+  b.addEventListener("click", ()=>goTo(i));
+  navEl.appendChild(b);
+});
+function goTo(i){
+  state.step = i; state.visited[i] = true;
+  $$(".panel").forEach(p => p.classList.toggle("show", +p.dataset.panel === i));
+  $$(".stepbtn").forEach((b,j)=>{
+    b.classList.toggle("active", j===i);
+    b.classList.toggle("done", j<i || (state.visited[j] && j!==i && stepTouched(j)));
+    b.querySelector(".num").textContent = b.classList.contains("done") ? "✓" : j+1;
+  });
+  updateOverall();
+  window.scrollTo({top:0, behavior:"smooth"});
+}
+function stepTouched(i){
+  if(i===0) return $("#briefText").value.trim().length>0 || !!state.poster;
+  if(i===1) return Object.values(state.quality).some(v=>v!==null);
+  if(i===2) return state.photos.length>0 || state.videos.length>0;
+  if(i===3) return true;                       // reviewed by visiting
+  if(i===4) return checklistProgress() > 0;
+  return false;
+}
+function updateOverall(){
+  const done = STEPS.filter((_,i)=> state.visited[i] && (i < state.step || stepTouched(i))).length;
+  const pct = Math.round( (done / STEPS.length) * 100 );
+  $("#overallBar").style.width = pct + "%";
+  $("#overallPct").textContent = pct + "%";
+}
+$$("[data-next]").forEach(b => b.addEventListener("click", ()=>goTo(Math.min(4, state.step+1))));
+$$("[data-prev]").forEach(b => b.addEventListener("click", ()=>goTo(Math.max(0, state.step-1))));
+
+/* ================= Dropzone helper ================= */
+function wireDrop(dropId, inputId, onFiles){
+  const drop = document.getElementById(dropId), input = document.getElementById(inputId);
+  drop.addEventListener("click", ()=>input.click());
+  drop.addEventListener("keydown", e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); input.click(); }});
+  ["dragenter","dragover"].forEach(ev => drop.addEventListener(ev, e=>{ e.preventDefault(); drop.classList.add("over"); }));
+  ["dragleave","drop"].forEach(ev => drop.addEventListener(ev, e=>{ e.preventDefault(); drop.classList.remove("over"); }));
+  drop.addEventListener("drop", e=>{ const f = e.dataTransfer.files; if(f && f.length) onFiles(f); });
+  input.addEventListener("change", ()=>{ if(input.files.length) onFiles(input.files); input.value=""; });
+}
+
+/* ================= Step 1 · brief & poster ================= */
+$("#briefText").addEventListener("input", ()=>{
+  const words = $("#briefText").value.trim().split(/\s+/).filter(Boolean).length;
+  $("#briefMeta").textContent = words
+    ? `Brief added — about ${words} words. Names and sessions found here feed the people classification in Step 4.`
+    : "Nothing added yet. Even a rough paste helps — the agent mainly needs names, session titles, and timing.";
+  updateOverall();
+});
+$("#briefUrl").addEventListener("input", updateOverall);
+wireDrop("posterDrop","posterInput", files=>{
+  const f = files[0]; if(!f) return;
+  if(state.poster) URL.revokeObjectURL(state.poster.url);
+  state.poster = { name:f.name, size:f.size, url:URL.createObjectURL(f) };
+  $("#posterImg").src = state.poster.url;
+  $("#posterPreview").style.display = "block";
+  $("#posterMeta").textContent = `${f.name} · ${fmtSize(f.size)} — used as the color and branding reference.`;
+  updateOverall();
+});
+
+/* ================= Step 2 · quality questionnaire ================= */
+const QUESTIONS = [
+  { key:"device", q:"What were the photos shot on?",
+    d:"Sensor size sets the ceiling for low-light recovery and cropping.",
+    opts:[
+      { v:"phone",    t:"Phone",                    s:"Computational, small sensor" },
+      { v:"mirrorless",t:"Mirrorless / DSLR",       s:"Large sensor, best raw material" },
+      { v:"compact",  t:"Compact camera",           s:"1-inch class sensor, in between" },
+      { v:"mix",      t:"A mix",                    s:"Agent assesses per photo" },
+    ]},
+  { key:"raw", q:"Do you have RAW files?",
+    d:"RAW is the difference between adjusting a photo and guessing at one.",
+    opts:[
+      { v:"full",     t:"Yes — full RAW",           s:"Maximum editing latitude" },
+      { v:"partial",  t:"Partial",                  s:"RAW for some sets only" },
+      { v:"jpeg",     t:"No — JPEG only",           s:"Already baked and compressed" },
+      { v:"heic",     t:"No — HEIC only",           s:"Phone-compressed, similar limits" },
+    ]},
+  { key:"lighting", q:"How was the light?",
+    d:"Be honest — this is the single biggest factor in what can be saved.",
+    opts:[
+      { v:"daylight", t:"Bright daylight",          s:"The easy case" },
+      { v:"welllit",  t:"Well-lit indoor",          s:"Stage or venue lighting done right" },
+      { v:"dim",      t:"Dim indoor",               s:"Mood lighting, raised shadows" },
+      { v:"dark",     t:"Very dark",                s:"Faces near the noise floor" },
+      { v:"backlight",t:"Mixed / strong backlight", s:"Bright windows, dark faces" },
+    ]},
+  { key:"delivery", q:"How will the files reach the agent?",
+    d:"Every re-send through a chat app strips detail the agent can't invent back.",
+    opts:[
+      { v:"originals",t:"Original files",           s:"Straight off card / phone" },
+      { v:"cloud",    t:"Cloud-drive originals",    s:"Full size, uncompressed link" },
+      { v:"chat",     t:"Compressed by chat apps",  s:"Sent via messaging — detail lost" },
+    ]},
+  { key:"count", q:"Roughly how many photos?",
+    d:"Sets the scope: full-set processing or highlights-first.",
+    opts:[
+      { v:"s",        t:"Under 100",                s:"Full set, frame by frame" },
+      { v:"m",        t:"100 – 300",                s:"A typical event set" },
+      { v:"l",        t:"300 – 800",                s:"Agent triages first" },
+      { v:"xl",       t:"800 +",                    s:"Highlights-first workflow" },
+    ]},
+];
+const formEl = $("#qualityForm");
+QUESTIONS.forEach(q=>{
+  const g = document.createElement("div"); g.className = "qgroup";
+  g.innerHTML = `<div class="q">${q.q}</div><div class="qd">${q.d}</div>`;
+  const opts = document.createElement("div"); opts.className = "opts";
+  q.opts.forEach(o=>{
+    const lab = document.createElement("label"); lab.className = "opt";
+    lab.innerHTML = `<input type="radio" name="q-${q.key}" value="${o.v}">
+                     <span class="obox"><span class="ot">${o.t}</span><span class="od">${o.s}</span></span>`;
+    lab.querySelector("input").addEventListener("change", ()=>{
+      state.quality[q.key] = o.v; assess(); updateOverall();
+    });
+    opts.appendChild(lab);
+  });
+  g.appendChild(opts); formEl.appendChild(g);
+});
+
+/* Scoring — deliberately conservative. Compression and missing RAW
+   cap what is possible no matter how good the model is. */
+function assess(){
+  const q = state.quality;
+  const answered = Object.values(q).filter(v=>v!==null).length;
+  if(answered === 0) return;
+  const devicePts  = { phone:38, compact:56, mix:62, mirrorless:84 }[q.device] ?? 50;
+  const rawPts     = { full:26, partial:13, jpeg:-2, heic:-6 }[q.raw] ?? 0;
+  const lightPts   = { daylight:10, welllit:6, dim:-6, dark:-20, backlight:-12 }[q.lighting] ?? 0;
+  const deliverPts = { originals:10, cloud:8, chat:-24 }[q.delivery] ?? 0;
+  let score = clamp(Math.round(50 + (devicePts-50)*0.9 + rawPts + lightPts + deliverPts), 3, 98);
+  if(q.delivery==="chat") score = Math.min(score, 58);       // hard cap: detail already gone
+  if(q.raw==="jpeg"||q.raw==="heic") score = Math.min(score, 82);
+
+  const hasRaw = q.raw==="full" || q.raw==="partial";
+  const sensor = { phone:34, compact:52, mix:58, mirrorless:82 }[q.device] ?? 50;
+  const darkPenalty = q.lighting==="dark" ? (hasRaw? 12:38) : q.lighting==="dim" ? (hasRaw?6:20) : 0;
+  const caps = [
+    { name:"Face brightening", score: clamp(Math.round(sensor*0.45 + (hasRaw?32:8) + (q.lighting==="daylight"?22:q.lighting==="welllit"?14:0) - darkPenalty), 4, 97),
+      note: q.lighting==="dark" && !hasRaw ? "Faces can be lifted, but noise comes up with them — expect a soft, grainy result."
+          : hasRaw ? "Shadows hold real detail in RAW; faces can be raised cleanly." : "Works on well-exposed frames; deep shadow faces stay limited." },
+    { name:"Denoise & detail recovery", score: clamp(Math.round(sensor*0.55 + (hasRaw?30:4) - (q.delivery==="chat"?26:0)), 4, 96),
+      note: q.delivery==="chat" ? "Chat compression already discarded fine detail — denoise can smooth, not restore."
+          : hasRaw ? "RAW noise can be reduced while keeping skin texture." : "Moderate: baked-in noise reduction has already smeared some detail." },
+    { name:"White-balance correction", score: clamp(Math.round(hasRaw? 90 : q.raw==="partial"? 68 : 44), 4, 95),
+      note: hasRaw ? "RAW white balance is metadata, not baked in — full correction, no quality loss."
+                   : "JPEG/HEIC color is baked in; strong casts can be reduced, not fully undone." },
+    { name:"Highlight recovery", score: clamp(Math.round(hasRaw? (q.raw==="full"?88:70) : 26) - (q.lighting==="backlight"?8:0), 4, 94),
+      note: hasRaw ? "Blown stage lights and windows usually hold 1–2 stops in RAW." : "Clipped highlights in JPEG are gone — the agent can only soften the edges." },
+    { name:"Sharpening & upscale", score: clamp(Math.round(sensor*0.6 + (q.delivery==="chat"? -18 : 8)), 4, 92),
+      note: q.delivery==="chat" ? "Upscaling compressed files enlarges artifacts along with the subject."
+                               : "Enough resolution for confident crops and social-size upscales." },
+  ];
+  const band = score>=72 ? {t:"Recoverable", c:"var(--ok)"}
+             : score>=52 ? {t:"Recoverable, with limits", c:"var(--amber)"}
+             : score>=34 ? {t:"Limited", c:"var(--amber)"}
+             :             {t:"Very limited", c:"var(--bad)"};
+  $("#scoreNum").textContent = score;
+  $("#scoreBar").style.width = score + "%";
+  $("#scoreBar").style.background = band.c;
+  let verdict, sub;
+  if(q.raw==="full" && q.lighting==="dark"){ verdict = "Dark, but recoverable."; sub = "This is the case RAW exists for. Faces and stage detail can be pulled up with controlled noise — the agent can work close to the photographer's intent."; }
+  else if(q.delivery==="chat" && q.lighting==="dark"){ verdict = "Honestly: limited."; sub = "Dark scenes, phone files, then chat compression — each step discarded detail. Faces can be brightened somewhat, but expect grain and soft edges. If originals exist anywhere, get them before processing."; }
+  else if(q.delivery==="chat"){ verdict = "Workable — if expectations are set."; sub = "Chat-app compression is the bottleneck, not the camera. Good for social-size delivery; not for prints or heavy crops."; }
+  else if(score>=72){ verdict = "A strong starting set."; sub = "The agent can brighten, denoise, and rebalance close to a hand-edit — human review stays on final selects only."; }
+  else if(score>=52){ verdict = "Recoverable, with named limits."; sub = "Most frames will come back well. The weakest-lit, most-compressed shots will show their origins — the agent flags them rather than faking them."; }
+  else { verdict = "Limited — plan for highlights only."; sub = "Rather than processing everything, the agent should triage: save the best-exposed frames well instead of lifting the whole set badly."; }
+  $("#verdict").textContent = verdict;
+  $("#verdictSub").textContent = sub;
+  $("#capList").innerHTML = caps.map(c=>{
+    const lvl = c.score>=68 ? ["Strong","strong"] : c.score>=42 ? ["Moderate","mod"] : ["Limited","lim"];
+    return `<div class="cap"><div class="crow"><b>${c.name}</b><span class="lvl ${lvl[1]}">${lvl[0]} · ${c.score}</span></div>
+            <div class="bar"><i style="width:${c.score}%"></i></div><div class="note">${c.note}</div></div>`;
+  }).join("");
+  const counts = { s:"Under 100 photos — the full set can be processed frame by frame.",
+                   m:"100–300 photos — a standard event set; culling first, then full processing.",
+                   l:"300–800 photos — the agent triages duplicates and closed eyes before deep edits.",
+                   xl:"800+ photos — highlights-first: the agent surfaces the strongest frames per person, then processes on approval." };
+  $("#scopeNote").textContent = (counts[q.count] || "Answer all five questions for the full picture.") +
+    (answered<5 ? ` (${answered}/5 answered)` : "");
+}
+</script>
+
+<script>
+"use strict";
+/* ================= Step 3 · uploads (local File API only) ================= */
+function renderUploads(kind){
+  const list   = kind==="photo" ? state.photos : state.videos;
+  const thumbs = $("#"+kind+"Thumbs"), stats = $("#"+kind+"Stats"),
+        empty  = $("#"+kind+"Empty"),  clear = $("#"+kind+"Clear");
+  thumbs.innerHTML = "";
+  list.forEach((f,idx)=>{
+    const d = document.createElement("div"); d.className = "thumb";
+    d.innerHTML = (kind==="photo"
+        ? `<img src="${f.url}" alt="">`
+        : `<video src="${f.url}" muted preload="metadata" playsinline></video>`) +
+      `<span class="fn">${f.name}</span>`;
+    const rm = document.createElement("button");
+    rm.className = "rm"; rm.type = "button"; rm.textContent = "×"; rm.title = "Remove";
+    rm.addEventListener("click", ev=>{
+      ev.stopPropagation();
+      URL.revokeObjectURL(f.url); list.splice(idx,1);
+      renderUploads(kind); renderWall(); updateOverall();
+    });
+    d.appendChild(rm); thumbs.appendChild(d);
+  });
+  const total = list.reduce((a,f)=>a+f.size,0);
+  empty.style.display = list.length ? "none" : "block";
+  clear.style.display = list.length ? "inline-block" : "none";
+  stats.innerHTML = list.length
+    ? `<span><b>${list.length}</b> file${list.length>1?"s":""}</span><span><b>${fmtSize(total)}</b> total</span><span>Stored only in this tab</span>`
+    : "";
+}
+function addFiles(kind, fileList){
+  const list = kind==="photo" ? state.photos : state.videos;
+  Array.from(fileList).forEach(f=>{
+    if(kind==="photo" && !f.type.startsWith("image/")) return;
+    if(kind==="video" && !f.type.startsWith("video/")) return;
+    list.push({ name:f.name, size:f.size, url:URL.createObjectURL(f) });
+  });
+  renderUploads(kind); renderWall(); updateOverall();
+}
+wireDrop("photoDrop","photoInput", f=>addFiles("photo",f));
+wireDrop("videoDrop","videoInput", f=>addFiles("video",f));
+$("#photoClear").addEventListener("click", ()=>{ state.photos.forEach(f=>URL.revokeObjectURL(f.url)); state.photos=[]; renderUploads("photo"); renderWall(); updateOverall(); });
+$("#videoClear").addEventListener("click", ()=>{ state.videos.forEach(f=>URL.revokeObjectURL(f.url)); state.videos=[]; renderUploads("video"); updateOverall(); });
+renderUploads("photo"); renderUploads("video");
+
+/* ================= Step 4 · people classification ================= */
+const PEOPLE = [
+  { id:"p1", name:"Maya Lin",     role:"Speaker",    count:64, hue:152, target:"Delivery target: 5 highlights + 3 shareable portraits — keynote frames prioritized." },
+  { id:"p2", name:"Jordan Reyes", role:"Speaker",    count:41, hue:212, target:"Delivery target: 4 highlights + 2 shareable portraits — panel and Q&A frames." },
+  { id:"p3", name:"Priya Nair",    role:"VIP Guest",  count:27, hue:22,  target:"Delivery target: 3 highlights + 2 shareable portraits — check posting consent first." },
+  { id:"p4", name:"Tom Alvarez",   role:"Organizer",  count:33, hue:262, target:"Delivery target: 4 highlights + 1 group shot — stage and behind-the-scenes." },
+  { id:"p5", name:"Sofia Kim",     role:"Speaker",    count:48, hue:330, target:"Delivery target: 5 highlights + 3 shareable portraits — demo close-ups included." },
+  { id:"p6", name:"Daniel Osei",   role:"Attendee",   count:19, hue:96,  target:"Delivery target: 2 highlights — networking candids only, no posed selects needed." },
+];
+const ROLES = ["Speaker","VIP Guest","Organizer","Attendee"];
+const TARGETS = {
+  "Speaker":    n => `Delivery target: 5 highlights + 3 shareable portraits — stage frames prioritized.`,
+  "VIP Guest":  n => `Delivery target: 3 highlights + 2 shareable portraits — check posting consent first.`,
+  "Organizer":  n => `Delivery target: 4 highlights + 1 group shot — stage and behind-the-scenes.`,
+  "Attendee":   n => `Delivery target: 2 highlights — candids only, no posed selects needed.`,
+};
+const DEMO_TAGS = ["Keynote","Panel","Networking","Workshop","Reception","Audience"];
+const demoTiles = [];
+PEOPLE.forEach((p,pi)=>{
+  for(let i=0;i<4;i++){
+    const tag = DEMO_TAGS[(pi + i*2) % DEMO_TAGS.length];
+    demoTiles.push({ person:p.id, tag, hue:(p.hue + i*18) % 360, seed: pi*4+i });
+  }
+});
+const initials = n => n.split(/\s+/).map(w=>w[0]).slice(0,2).join("").toUpperCase();
+
+const grid = $("#peopleGrid");
+PEOPLE.forEach(p=>{
+  const card = document.createElement("div");
+  card.className = "person"; card.dataset.id = p.id; card.tabIndex = 0;
+  card.innerHTML = `
+    <div class="prow">
+      <div class="avatar" style="background:hsl(${p.hue} 32% 38%)">${initials(p.name)}</div>
+      <div style="flex:1;min-width:0">
+        <input class="pname" value="${p.name}" aria-label="Person name">
+        <div class="pcount">${p.count} photos in set</div>
+      </div>
+    </div>
+    <select aria-label="Role">
+      ${ROLES.map(r=>`<option ${r===p.role?"selected":""}>${r}</option>`).join("")}
+    </select>
+    <div class="target">${p.target}</div>`;
+  const nameInput = card.querySelector(".pname");
+  nameInput.addEventListener("input", ()=>{
+    p.name = nameInput.value || p.name;
+    card.querySelector(".avatar").textContent = initials(nameInput.value || "?");
+    renderWallChips();
+  });
+  nameInput.addEventListener("click", e=>e.stopPropagation());
+  const sel = card.querySelector("select");
+  sel.addEventListener("click", e=>e.stopPropagation());
+  sel.addEventListener("change", ()=>{
+    p.role = sel.value;
+    card.querySelector(".target").textContent = TARGETS[p.role](p.name);
+  });
+  const select = ()=>{ state.wallFilter = (state.wallFilter===p.id ? "all" : p.id); renderPeopleSel(); renderWallChips(); renderWall(); };
+  card.addEventListener("click", select);
+  card.addEventListener("keydown", e=>{ if(e.key==="Enter" && e.target===card) select(); });
+  grid.appendChild(card);
+});
+function renderPeopleSel(){
+  $$(".person").forEach(c => c.classList.toggle("sel", c.dataset.id === state.wallFilter));
+}
+function renderWallChips(){
+  const wrap = $("#wallChips"); wrap.innerHTML = "";
+  const chips = [ {id:"all", label:"All photos"}, ...PEOPLE.map(p=>({id:p.id, label:p.name})) ];
+  if(state.photos.length) chips.splice(1,0,{id:"uploads", label:`Your uploads (${state.photos.length})`});
+  chips.forEach(c=>{
+    const b = document.createElement("button");
+    b.className = "chip" + (state.wallFilter===c.id ? " on" : "");
+    b.type = "button"; b.textContent = c.label;
+    b.addEventListener("click", ()=>{ state.wallFilter = c.id; renderPeopleSel(); renderWallChips(); renderWall(); });
+    wrap.appendChild(b);
+  });
+}
+function renderWall(){
+  const wall = $("#wall"); wall.innerHTML = "";
+  let shown = 0;
+  if(state.wallFilter==="all" || state.wallFilter==="uploads"){
+    state.photos.forEach(f=>{
+      const t = document.createElement("div"); t.className = "tile real";
+      t.innerHTML = `<img src="${f.url}" alt=""><span class="who">Your upload</span><span class="tag">Unclassified — run Step 4</span>`;
+      wall.appendChild(t); shown++;
+    });
+  }
+  if(state.wallFilter!=="uploads"){
+    demoTiles.filter(t => state.wallFilter==="all" || t.person===state.wallFilter).forEach(t=>{
+      const p = PEOPLE.find(x=>x.id===t.person);
+      const d = document.createElement("div"); d.className = "tile";
+      d.innerHTML = `<div class="ph" style="background:linear-gradient(${135+t.seed*7}deg, hsl(${t.hue} 38% ${58 - (t.seed%3)*7}%), hsl(${(t.hue+42)%360} 34% ${34 + (t.seed%4)*5}%))"></div>
+                     <span class="who">${p ? p.name : ""}</span><span class="tag">${t.tag}</span>`;
+      wall.appendChild(d); shown++;
+    });
+  }
+  $("#wallEmpty").style.display = shown ? "none" : "block";
+}
+renderPeopleSel(); renderWallChips(); renderWall();
+
+/* ================= Step 5 · photographer checklist ================= */
+const CHECKLIST = [
+  { title:"Event basics", items:[
+    { id:"ev-type",  type:"fill", label:"Event type & rough size", ph:"e.g. 200-person product launch, half stage / half reception" },
+    { id:"ev-when",  type:"fill", label:"Date, call time & duration", ph:"e.g. Sat Nov 8, crew call 15:30, doors 17:00, ends 21:00" },
+    { id:"ev-venue", type:"check", label:"Venue confirmed — and its lighting scouted or described", sub:"Window walls? Stage wash? House lights dimmed for talks?" },
+    { id:"ev-access",type:"check", label:"Access & movement agreed", sub:"Can I move during talks, or shoot from fixed positions only?" },
+  ]},
+  { title:"Must-capture moments", items:[
+    { id:"mc-open",  type:"check", label:"Opening / keynote on stage" },
+    { id:"mc-award", type:"check", label:"Awards, handshakes & on-stage handoffs" },
+    { id:"mc-react", type:"check", label:"Audience reactions & candid networking" },
+    { id:"mc-group", type:"check", label:"Group photo — when, where, and who gathers people" },
+    { id:"mc-detail",type:"check", label:"Details: signage, products, food, venue dressing" },
+    { id:"mc-other", type:"fill", label:"Anything else that must not be missed", ph:"e.g. the founder's parents in row 2 — one photo, privately delivered" },
+  ]},
+  { title:"VIPs & who cannot be posted", items:[
+    { id:"vip-names",type:"fill", label:"VIP list — names, faces, arrival times", ph:"e.g. CEO + two investors, arriving 16:45, greeted at door" },
+    { id:"vip-nopost",type:"fill", label:"Anyone who must NOT be posted publicly", ph:"Names or descriptions — their photos are delivered privately or not at all" },
+    { id:"vip-minors",type:"check", label:"Minors may attend — posting needs guardian consent" },
+    { id:"vip-embargo",type:"fill", label:"Embargo, if any", ph:"e.g. nothing public before the press release, Mon 09:00" },
+  ]},
+  { title:"Run of show / agenda", items:[
+    { id:"ros-agenda",type:"check", label:"Full agenda / run of show received", sub:"Same source as Step 1 — paste it there so the agent can tag by session." },
+    { id:"ros-order", type:"check", label:"Speaker order & stage timings confirmed" },
+    { id:"ros-surprise",type:"check", label:"Surprise moments flagged", sub:"Proposals, announcements, confetti — the ones you can't reshoot." },
+  ]},
+  { title:"Delivery specs", items:[
+    { id:"dl-deadline",type:"fill", label:"Deadline — highlights vs. full set", ph:"e.g. 5 highlights within 2 hours for social; full set in 48 hours" },
+    { id:"dl-count",  type:"fill", label:"How many selects, per person if it matters", ph:"e.g. ~5 highlights overall + 1–5 shareable portraits per guest" },
+    { id:"dl-ratio",  type:"check", label:"Aspect ratios agreed", sub:"Original / 4:5 for feed, 9:16 for stories, 16:9 for recap video stills." },
+    { id:"dl-use",    type:"check", label:"Usage confirmed: social, press, or print", sub:"Print needs full-resolution originals — social does not." },
+  ]},
+  { title:"Branding", items:[
+    { id:"br-logo",   type:"check", label:"Logo files received (light & dark versions)" },
+    { id:"br-colors", type:"fill", label:"Poster & brand colors on file", ph:"Poster goes in Step 1 — the agent matches select grading to it" },
+    { id:"br-mark",   type:"check", label:"Watermark / credit line agreed", sub:"Or explicitly: no watermark on client selects." },
+  ]},
+];
+const clWrap = $("#checklistWrap");
+CHECKLIST.forEach(group=>{
+  const card = document.createElement("div"); card.className = "card clgroup";
+  card.innerHTML = `<h2>${group.title}</h2>`;
+  group.items.forEach(it=>{
+    if(it.type==="check"){
+      const row = document.createElement("label"); row.className = "clitem";
+      row.innerHTML = `<input type="checkbox" id="cl-${it.id}"><span class="cl-t"><span>${it.label}</span>${it.sub?`<small>${it.sub}</small>`:""}</span>`;
+      row.querySelector("input").addEventListener("change", e=>{
+        row.classList.toggle("done", e.target.checked); updateChecklist();
+      });
+      card.appendChild(row);
+    } else {
+      const row = document.createElement("div"); row.className = "clitem";
+      row.innerHTML = `<span class="cl-t"><span>${it.label}</span></span>`;
+      card.appendChild(row);
+      const fill = document.createElement("div"); fill.className = "clfill";
+      fill.innerHTML = `<input type="text" id="cl-${it.id}" placeholder="${it.ph||""}">`;
+      fill.querySelector("input").addEventListener("input", updateChecklist);
+      card.appendChild(fill);
+    }
+  });
+  clWrap.appendChild(card);
+});
+function checklistFields(){
+  const fields = [];
+  CHECKLIST.forEach(g => g.items.forEach(it=>{
+    const el = document.getElementById("cl-"+it.id); if(!el) return;
+    const done = it.type==="check" ? el.checked : el.value.trim().length>0;
+    fields.push({ group:g.title, item:it, el, done });
+  }));
+  return fields;
+}
+function checklistProgress(){
+  const f = checklistFields(); if(!f.length) return 0;
+  return f.filter(x=>x.done).length / f.length;
+}
+function updateChecklist(){
+  const pct = Math.round(checklistProgress()*100);
+  $("#clBar").style.width = pct + "%";
+  $("#clPct").textContent = pct + "%";
+  buildSummary(); updateOverall();
+}
+function buildSummary(){
+  const lines = ["Hi! Before the event, here's what I've noted — please confirm or correct anything:"];
+  CHECKLIST.forEach(g=>{
+    const parts = [];
+    g.items.forEach(it=>{
+      const el = document.getElementById("cl-"+it.id); if(!el) return;
+      if(it.type==="check" && el.checked) parts.push("✓ " + it.label);
+      if(it.type==="fill" && el.value.trim()) parts.push(it.label + ": " + el.value.trim());
+    });
+    if(parts.length) lines.push("", g.title + ":", ...parts.map(p=>"  " + p));
+  });
+  const pending = checklistFields().filter(x=>!x.done);
+  if(pending.length) lines.push("", `Still open (${pending.length}): ` + pending.slice(0,4).map(x=>x.item.label).join("; ") + (pending.length>4?"…":"."));
+  lines.push("", "Once you confirm, I'll shoot and deliver to exactly this — no surprises on deadline day. Thank you!");
+  $("#summaryBox").value = lines.join("\n");
+}
+$("#copySummary").addEventListener("click", async ()=>{
+  const txt = $("#summaryBox").value;
+  try { await navigator.clipboard.writeText(txt); }
+  catch(e){ $("#summaryBox").select(); document.execCommand("copy"); }
+  const n = $("#copiedNote"); n.classList.add("show");
+  setTimeout(()=>n.classList.remove("show"), 2000);
+});
+updateChecklist();
+
+/* ================= Init ================= */
+goTo(0);
+</script>
+</body>
+</html>
